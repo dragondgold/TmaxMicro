@@ -29,7 +29,6 @@ file_handler.setFormatter(file_formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
-
 def get_octoprint_version():
     import subprocess
     import re
@@ -88,12 +87,23 @@ class WiFiHelper(threading.Thread):
 
     def internet_available(self):
         """
-        Checks if internet is available pinging www.google.com.
+        Checks if internet is available pinging www.google.com
         :return: True if there is internet available, False otherwise
         """
         if subprocess.call('ping -c1 www.google.com'.split()) == 0:
             return True
         else:
+            return False
+
+    def connected_to_network(self):
+        """
+        Checks if connected to a WiFi network. Doesn't mean we have Internet.
+        :return: True if connected to a network, False otherwise
+        """
+        try:
+            return 'SSID' in subprocess.check_output('iw dev wlan0 link'.split()).decode('utf-8')
+        except subprocess.CalledProcessError as e:
+            logger.error('Couldn\'t run iw dev wlan0 link' + str(e))
             return False
 
     def scan_for_networks(self):
@@ -105,7 +115,7 @@ class WiFiHelper(threading.Thread):
             # Scan all the wifi networks
             output = subprocess.check_output('iw dev wlan0 scan'.split())
         except subprocess.CalledProcessError as e:
-            logger.error('Couldn\'t run iw dev wlan0 link' + str(e))
+            logger.error('Couldn\'t run iw dev wlan0 scan' + str(e))
             return
 
         # Convert the bytes to string, remove tabs and split the lines
@@ -153,6 +163,15 @@ class WiFiHelper(threading.Thread):
                     network_list[index].encryption = line[:line.find(':')]
 
         return network_list
+
+    def get_ip_address(self):
+        """
+        Get's the current IP address as string
+        """
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
 
     def run(self):
         # Kill every process related to any previous wifi connection
@@ -214,12 +233,13 @@ class TmaxAPI(threading.Thread):
     PRINT_TIME_LEFT = 4
     ELAPSED_PRINT_TIME = 5
     BED_TEMPERATURE = 6
-    FAN_SPEED = 7
     SHUTTING_DOWN = 8
     OCTOPRINT_STARTING = 9
 
-    # Data Types for received commands
-    BED_READY = 10
+    WIFI_OFF = 10
+    WIFI_ON = 11
+    WIFI_INTERNET = 12
+    IP_ADDRESS = 13
 
     # State machine status
     READING_START = 1
@@ -384,6 +404,22 @@ class TmaxAPI(threading.Thread):
         # Send the frame
         self.ser.write(frame)
 
+    def send_ip_address(self, ip_address):
+        """
+        Sends the defined IP address to be shown in the GLCD
+        :param ip_address: IP address as string
+        """
+        self.send_frame(TmaxAPI.IP_ADDRESS, ip_address)
+
+    def send_wifioff(self):
+        self.send_frame(TmaxAPI.WIFI_OFF, None)
+
+    def send_wifion(self):
+        self.send_frame(TmaxAPI.WIFI_ON, None)
+
+    def send_wifi_internet(self):
+        self.send_frame(TmaxAPI.WIFI_INTERNET, None)
+
     def send_system_started(self):
         """
         Sends a frame indicating that the system has started
@@ -444,13 +480,6 @@ class TmaxAPI(threading.Thread):
         b = struct.pack("I", elapsed_time)  # Convert integer to 4 bytes ('I')
         self.send_frame(TmaxAPI.ELAPSED_PRINT_TIME, b)
 
-    def send_fan_speed(self, speed):
-        """
-        Sends the fan speed
-        :param speed:           fan speed as an integer from 0 to 100
-        """
-        self.send_frame(TmaxAPI.FAN_SPEED, speed)
-
     def send_shutting_down(self):
         """
         Alerts the control board we are shutting down!
@@ -475,7 +504,8 @@ class OctoprintExecuter(threading.Thread):
     def run(self):
         logger.info("Starting Octoprint")
 
-        command = 'su -c /home/alarm/OctoPrint/venv/bin/octoprint -s /bin/sh alarm'.split()
+        # start octoprint with elevated proccess priority
+        command = 'nice -n -10 su -c /home/alarm/OctoPrint/venv/bin/octoprint -s /bin/sh alarm'.split()
         popen = subprocess.Popen(command, stdout=subprocess.PIPE)
         lines_iterator = iter(popen.stdout.readline, b"")
 

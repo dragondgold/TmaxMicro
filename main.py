@@ -98,12 +98,15 @@ if __name__ == '__main__':
             tmax.logger.info('Shutting down!')
             subprocess.call('shutdown -h now'.split())
 
+    # Platform info
     tmax.logger.info(platform.uname())
 
     # WiFi connection
     wifi = tmax.WiFiHelper()
-    if not wifi.internet_available():
+    if not wifi.connected_to_network():
         wifi.connect_to_wifi()
+    else:
+        tmax.logger.info("Already in network!")
 
     # Octoprint REST API
     octo_api = octoprint.OctoprintAPI('localhost')
@@ -126,9 +129,26 @@ if __name__ == '__main__':
     # Tell the control board we are ready!
     tmax.logger.info('Sending system started')
     tmax_api.send_system_started()
+    tmax_api.send_ip_address(wifi.get_ip_address())
     update_glcd_values()
 
     while True:
-        # This limits the CPU usage, otherwise it will jump to 100%
-        time.sleep(100)
+        # Always check in case we loose connection
+        if not wifi.connected_to_network():
+            tmax.logger.warn("Connection lost, trying to reconnect to network")
+            tmax_api.send_wifioff()
+            wifi.connect_to_wifi()
+
+        # After checking if I'm connected and trying to connect if I wasn't let's check if the connection was
+        #  or not successful and update the status in the LCD
+        if wifi.connected_to_network():
+            if wifi.internet_available():
+                tmax_api.send_wifi_internet()
+            else:
+                tmax_api.send_wifion()
+        else:
+            tmax_api.send_wifioff()
+
+        # Refresh the status every 3 seconds, no need to check it so fast
+        time.sleep(3)
 
