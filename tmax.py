@@ -33,8 +33,13 @@ def get_octoprint_version():
     import subprocess
     import re
     version = subprocess.check_output('/home/alarm/OctoPrint/venv/bin/octoprint --version'.split()).decode('utf-8')
-    p = re.compile('([0-9]\.[0-9]\.[0-9]\.dev?)')  # Match version
-    return p.search(version).group()
+    if 'dev' in version:
+        p = re.compile('([0-9]\.[0-9]\.[0-9]\.dev?)')  # Match version
+        return p.search(version).group()
+    else:
+        p = re.compile('([0-9]\.[0-9]\.[0-9])')
+        return p.search(version).group()
+
 
 
 class WiFiNetwork:
@@ -100,11 +105,9 @@ class WiFiHelper(threading.Thread):
         Checks if connected to a WiFi network. Doesn't mean we have Internet.
         :return: True if connected to a network, False otherwise
         """
-        try:
-            return 'SSID' in subprocess.check_output('iw dev wlan0 link'.split()).decode('utf-8')
-        except subprocess.CalledProcessError as e:
-            logger.error('Couldn\'t run iw dev wlan0 link' + str(e))
+        if self.get_ip_address() == '0.0.0.0':
             return False
+        return True
 
     def scan_for_networks(self):
         """
@@ -168,10 +171,13 @@ class WiFiHelper(threading.Thread):
         """
         Get's the current IP address as string
         """
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        except:
+            return "0.0.0.0"
 
     def run(self):
         # Kill every process related to any previous wifi connection
@@ -504,9 +510,15 @@ class OctoprintExecuter(threading.Thread):
     def run(self):
         logger.info("Starting Octoprint")
 
-        # start octoprint with elevated proccess priority
-        command = 'nice -n -10 su -c /home/alarm/OctoPrint/venv/bin/octoprint -s /bin/sh alarm'.split()
-        popen = subprocess.Popen(command, stdout=subprocess.PIPE)
+        # start octoprint with elevated proccess priority and running it as daemon
+        command_run = 'nice -n -10 su alarm -c "/home/alarm/OctoPrint/venv/bin/octoprint --daemon start"'
+        command_stop = 'nice -n -10 su alarm -c "/home/alarm/OctoPrint/venv/bin/octoprint --daemon stop"'
+
+        while subprocess.call(command_run, shell=True) != 0:
+            subprocess.call(command_stop, shell=True)
+
+        # read octoprint log while running
+        popen = subprocess.Popen('tail -f /home/alarm/.octoprint/logs/octoprint.log', stdout=subprocess.PIPE, shell=True)
         lines_iterator = iter(popen.stdout.readline, b"")
 
         for line in lines_iterator:

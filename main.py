@@ -138,6 +138,7 @@ if __name__ == '__main__':
             tmax.logger.warn("Connection lost, trying to reconnect to network")
             tmax_api.send_wifioff()
             wifi.connect_to_wifi()
+            tmax_api.send_ip_address(wifi.get_ip_address())
 
         # After checking if I'm connected and trying to connect if I wasn't let's check if the connection was
         #  or not successful and update the status in the LCD
