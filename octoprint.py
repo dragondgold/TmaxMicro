@@ -7,7 +7,7 @@ class OctoprintAPI:
     def __init__(self, host):
         self.host = host
         self.s = requests.Session()
-        self.s.headers.update({'X-Api-Key': 'E74F1D373ABD4D46A10CD325FFF0C187',
+        self.s.headers.update({'X-Api-Key': '6F383070189C47E98A378D046D50596D',
                                'Content-Type': 'application/json'})
 
     def is_printer_connected(self):
