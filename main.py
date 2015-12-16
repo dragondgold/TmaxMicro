@@ -55,37 +55,13 @@ if __name__ == '__main__':
             wifi.kill_wifi()
             wifi.kill_wifi()
 
-            import tmax
             # Open serial port
             tmax_api = tmax.TmaxAPI('/dev/ttyO3', 9600, None, 20)
 
             # Shutdown!
             import subprocess
-            tmax.logger.info('Killing octoprint')
+            tmax.logger.info('Stoping octoprint')
             subprocess.call('killall --signal SIGINT octoprint'.split())    # kill octoprint
-
-            # Get all the running process from root user with their complete caller tree
-            ps = subprocess.check_output('ps ef -u root'.split())
-
-            # Convert the bytes to string, remove tabs and split the lines
-            str_output = ps.decode('utf-8').replace('\t', '').split('\n')
-            iterator = iter(str_output)
-
-            # We will do a manual iteration to find the python3 process that is executing the octoprint server
-            while True:
-                try:
-                    line = next(iterator)
-                    # This is the python3 instance running this script, check if it's the one running octoprint
-                    if 'python3 /root/TmaxMicro/main.py' in line:
-                        pid = line.split()[0]
-                        # Check the next line, if it is the octoprint server, then kill this python process and
-                        #  keep running the one we are currently on
-                        if '\_ su -c /home/alarm/OctoPrint/venv/bin/octoprint' in next(iterator):
-                            tmax.logger.info('Killing python3 instance')
-                            subprocess.call(('kill -9 ' + str(pid)).split())
-                            break
-                except StopIteration:
-                    break
 
             # Tell the controller board we are shutting down
             tmax_api.send_shutting_down()
@@ -97,6 +73,7 @@ if __name__ == '__main__':
             # We killed wifi, octoprint and python3 instance, shutdown now
             tmax.logger.info('Shutting down!')
             subprocess.call('shutdown -h now'.split())
+            sys.exit()
 
     # Platform info
     tmax.logger.info(platform.uname())
@@ -150,6 +127,6 @@ if __name__ == '__main__':
         else:
             tmax_api.send_wifioff()
 
-        # Refresh the status every 3 seconds, no need to check it so fast
-        time.sleep(3)
+        # Refresh the status every 5 seconds, no need to check it so fast
+        time.sleep(5)
 
