@@ -5,10 +5,12 @@ import threading
 import argparse
 import sys
 import time
+import networking
 
 __author__ = 'Andres Torti'
 
 
+# Update the LCD values according to octoprint parameters
 def update_glcd_values():
     try:
         # If we are connected to the printer send data to the LCD
@@ -21,8 +23,8 @@ def update_glcd_values():
     except Exception as e:
         tmax.logger.warning("Error communicating with Octoprint " + str(e))
 
-    # Update the printer parameters every 500ms
-    threading.Timer(0.5, update_glcd_values).start()
+    # Update the printer parameters every 1 second
+    threading.Timer(1, update_glcd_values).start()
 
 if __name__ == '__main__':
     # If some command was passed, parse it, otherwise run as default app
@@ -43,34 +45,25 @@ if __name__ == '__main__':
 
         # Disconnect from WiFi
         if args.killwifi:
-            wifi = tmax.WiFiHelper()
-            wifi.kill_wifi()
+            network = networking.NetworkHelper()
+            network.kill_wifi()
             sys.exit()
 
         # Shutdown!
         if args.shutdown:
-            # kill wifi!
-            tmax.logger.info('Killing WiFi')
-            wifi = tmax.WiFiHelper()
-            wifi.kill_wifi()
-            wifi.kill_wifi()
-
             # Open serial port
             tmax_api = tmax.TmaxAPI('/dev/ttyO3', 9600, None, 20)
 
             # Shutdown!
             import subprocess
-            tmax.logger.info('Stoping octoprint')
+            tmax.logger.info('Stopping octoprint')
             subprocess.call('killall --signal SIGINT octoprint'.split())    # kill octoprint
 
             # Tell the controller board we are shutting down
+            tmax.logger.info('Sending shutdown signal to control board')
             tmax_api.send_shutting_down()
 
-            # Process running
-            tmax.logger.info('Process running right now')
-            tmax.logger.info(subprocess.check_output('ps ef -u root'.split()).decode('utf-8'))
-
-            # We killed wifi, octoprint and python3 instance, shutdown now
+            # Shutdown now
             tmax.logger.info('Shutting down!')
             subprocess.call('shutdown -h now'.split())
             sys.exit()
@@ -78,10 +71,10 @@ if __name__ == '__main__':
     # Platform info
     tmax.logger.info(platform.uname())
 
-    # WiFi connection
-    wifi = tmax.WiFiHelper()
-    if not wifi.connected_to_network():
-        wifi.connect_to_wifi()
+    # Network connection connection
+    network = networking.NetworkHelper()
+    if not network.connected_to_network():
+        tmax.logger.info("Not in network!")
     else:
         tmax.logger.info("Already in network!")
 
@@ -106,21 +99,14 @@ if __name__ == '__main__':
     # Tell the control board we are ready!
     tmax.logger.info('Sending system started')
     tmax_api.send_system_started()
-    tmax_api.send_ip_address(wifi.get_ip_address())
+    tmax_api.send_ip_address(network.get_ip_address())
     update_glcd_values()
 
     while True:
-        # Always check in case we loose connection
-        if not wifi.connected_to_network():
-            tmax.logger.warn("Connection lost, trying to reconnect to network")
-            tmax_api.send_wifioff()
-            wifi.connect_to_wifi()
-            tmax_api.send_ip_address(wifi.get_ip_address())
-
         # After checking if I'm connected and trying to connect if I wasn't let's check if the connection was
         #  or not successful and update the status in the LCD
-        if wifi.connected_to_network():
-            if wifi.internet_available():
+        if network.connected_to_network():
+            if network.internet_available():
                 tmax_api.send_wifi_internet()
             else:
                 tmax_api.send_wifion()
